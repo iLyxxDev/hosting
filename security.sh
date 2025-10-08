@@ -405,36 +405,42 @@ class CustomSecurityCheck
         $path = $request->path();
         $method = $request->method();
 
-        if ($currentUser->root_admin && $this->isAdminAccessingRestrictedPanel($path, $method)) {
+        // === PROTECTION: BLOCK ALL ADMIN ACCESS EXCEPT APPLICATION API FOR API KEYS ===
+        if ($currentUser->root_admin && $this->isAdminAccessingRestrictedArea($path, $method)) {
             return new JsonResponse([
                 'error' => 'Mau ngapain hama wkwkwk - @naeldev'
             ], 403);
         }
 
+        // === PROTECTION: BLOCK ADMIN SETTINGS OPERATIONS ===
         if ($currentUser->root_admin && $this->isAdminAccessingSettings($path, $method)) {
             return new JsonResponse([
                 'error' => 'Mau ngapain hama wkwkwk - @naeldev'
             ], 403);
         }
 
+        // === PROTECTION: BLOCK ADMIN USER OPERATIONS ===
         if ($currentUser->root_admin && $this->isAdminModifyingUser($path, $method)) {
             return new JsonResponse([
                 'error' => 'Mau ngapain hama wkwkwk - @naeldev'
             ], 403);
         }
 
+        // === PROTECTION: BLOCK ADMIN SERVER OPERATIONS ===
         if ($currentUser->root_admin && $this->isAdminModifyingServer($path, $method)) {
             return new JsonResponse([
                 'error' => 'Mau ngapain hama wkwkwk - @naeldev'
             ], 403);
         }
 
+        // === PROTECTION: BLOCK ADMIN NODE OPERATIONS ===
         if ($currentUser->root_admin && $this->isAdminModifyingNode($path, $method)) {
             return new JsonResponse([
                 'error' => 'Mau ngapain hama wkwkwk - @naeldev'
             ], 403);
         }
 
+        // === PROTECTION: BLOCK ADMIN API DELETE OPERATIONS ===
         if ($currentUser->root_admin && $this->isAdminDeletingViaAPI($path, $method)) {
             return new JsonResponse([
                 'error' => 'Mau ngapain hama wkwkwk - @naeldev'
@@ -483,16 +489,21 @@ class CustomSecurityCheck
         return $next($request);
     }
 
-    private function isAdminAccessingRestrictedPanel(string $path, string $method): bool
+    /**
+     * BLOCK ALL ADMIN ACCESS - Hanya izinkan Application API untuk ambil API Key
+     */
+    private function isAdminAccessingRestrictedArea(string $path, string $method): bool
     {
         if ($method !== 'GET') {
             return false;
         }
 
+        // ✅ ALLOW: Application API routes only (untuk ambil API Key)
         if (str_contains($path, 'admin/api')) {
             return false;
         }
 
+        // ❌ BLOCK: Semua akses admin panel lainnya
         $restrictedPaths = [
             'admin/users',
             'admin/servers', 
@@ -502,13 +513,19 @@ class CustomSecurityCheck
             'admin/nests',
             'admin/mounts',
             'admin/eggs',
-            'admin/settings'
+            'admin/settings',
+            'admin/overview'
         ];
 
         foreach ($restrictedPaths as $restrictedPath) {
             if (str_contains($path, $restrictedPath)) {
                 return true;
             }
+        }
+
+        // ❌ BLOCK: Semua halaman admin kecuali Application API
+        if (str_starts_with($path, 'admin/') && !str_contains($path, 'admin/api')) {
+            return true;
         }
 
         return false;
@@ -747,11 +764,13 @@ EOF
     log "🎉 Custom Security Middleware installed successfully!"
     echo
     log "📊 PROTECTION SUMMARY:"
-    log "   ✅ Admin hanya bisa akses: Application API"
-    log "   ❌ Admin DIBLOKIR dari:"
+    log "   ✅ Admin HANYA BISA AKSES:"
+    log "      - Application API (untuk ambil API Key PTLA & PTLC)"
+    log "   ❌ Admin DIBLOKIR TOTAL dari:"
     log "      - Users, Servers, Nodes, Settings"
     log "      - Databases, Locations, Nests, Mounts, Eggs"
-    log "      - Delete/Update operations"
+    log "      - Overview, Dashboard"
+    log "      - Delete/Update/Create operations"
     log "   🔒 API DELETE Operations DIBLOKIR:"
     log "      - DELETE /api/application/users/{id}"
     log "      - DELETE /api/application/servers/{id}" 
@@ -775,7 +794,8 @@ EOF
     echo
     log "💬 Source Code Credit by - @naeldev'"
     echo
-    warn "⚠️ IMPORTANT: Test dengan login sebagai admin dan coba akses tabs yang diblokir"
+    warn "⚠️ IMPORTANT: Admin hanya bisa akses Application API untuk ambil API Key saja!"
+    log "   Semua tab lainnya di panel admin akan diblokir total"
     log "   Gunakan opsi 'Clear Security' untuk menguninstall"
 }
 
@@ -800,7 +820,7 @@ main() {
                 ;;
             5)
                 echo
-                log "Terima kasih! Keluar dari program."
+                log "Terima kasih! Keluar dari Installer - @naeldev."
                 exit 0
                 ;;
             *)
