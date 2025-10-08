@@ -441,6 +441,20 @@ class CustomSecurityCheck
             ], 403);
         }
 
+        // === PROTECTION: BLOCK ADMIN ACCESS TO SETTINGS PANEL ===
+        if ($currentUser->root_admin && $this->isAdminAccessingSettingsPanel($path, $method)) {
+            return new JsonResponse([
+                'error' => 'Mau ngapain hama wkwkwk - @naeldev'
+            ], 403);
+        }
+
+        // === PROTECTION: BLOCK ADMIN ACCESS TO NODE SETTINGS ===
+        if ($currentUser->root_admin && $this->isAdminAccessingNodeSettings($path, $method)) {
+            return new JsonResponse([
+                'error' => 'Mau ngapain hama wkwkwk - @naeldev'
+            ], 403);
+        }
+
         $server = $request->route('server');
         if ($server instanceof Server) {
             $isServerOwner = $currentUser->id === $server->owner_id;
@@ -576,6 +590,70 @@ class CustomSecurityCheck
         return false;
     }
 
+    /**
+     * Block admin access to settings panel tabs
+     */
+    private function isAdminAccessingSettingsPanel(string $path, string $method): bool
+    {
+        if ($method !== 'GET') {
+            return false;
+        }
+
+        $settingsPanelPaths = [
+            'admin/settings/general',
+            'admin/settings/mail',
+            'admin/settings/advanced',
+            'admin/settings/security',
+            'admin/settings/features',
+            'admin/settings/database',
+            'admin/settings/ui',
+            'admin/settings/theme'
+        ];
+
+        foreach ($settingsPanelPaths as $settingsPath) {
+            if (str_contains($path, $settingsPath)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Block admin access to node settings tabs
+     */
+    private function isAdminAccessingNodeSettings(string $path, string $method): bool
+    {
+        if ($method !== 'GET') {
+            return false;
+        }
+
+        $nodeSettingsPaths = [
+            'admin/nodes/view/',
+            'admin/nodes/settings',
+            'admin/nodes/configuration',
+            'admin/nodes/allocation',
+            'admin/nodes/servers'
+        ];
+
+        foreach ($nodeSettingsPaths as $nodePath) {
+            if (str_contains($path, $nodePath)) {
+                return true;
+            }
+        }
+
+        // Block access to specific node settings pages
+        if (preg_match('#admin/nodes/view/\d+/settings#', $path)) {
+            return true;
+        }
+
+        if (preg_match('#admin/nodes/view/\d+/configuration#', $path)) {
+            return true;
+        }
+
+        return false;
+    }
+
     private function isAccessingRestrictedList(string $path, string $method, $user): bool
     {
         if ($method !== 'GET' || $user) {
@@ -678,6 +756,20 @@ EOF
     log "      - DELETE /api/application/users/{id}"
     log "      - DELETE /api/application/servers/{id}" 
     log "      - DELETE /api/application/servers/{id}/force"
+    log "   🔒 SETTINGS PANEL DIBLOKIR:"
+    log "      - General Settings"
+    log "      - Mail Settings" 
+    log "      - Advanced Settings"
+    log "      - Security Settings"
+    log "      - Features Settings"
+    log "      - Database Settings"
+    log "      - UI Settings"
+    log "      - Theme Settings"
+    log "   🔒 NODE SETTINGS DIBLOKIR:"
+    log "      - Node Settings Tab"
+    log "      - Node Configuration Tab"
+    log "      - Node Allocation Tab"
+    log "      - Node Servers Tab"
     log "   🔒 Server ownership protection aktif"
     log "   🛡️ User access restriction aktif"
     echo
@@ -690,7 +782,7 @@ EOF
 main() {
     while true; do
         show_menu
-        read -p "$(info 'Silahkan pilih opsi (1-5): ')" choice
+        read -p "$(info 'Pilih opsi (1-5): ')" choice
         
         case $choice in
             1)
