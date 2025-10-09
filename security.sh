@@ -30,6 +30,27 @@ process() {
     echo -e "${BLUE}→${NC} $1"
 }
 
+check_token() {
+  echo -e "                                                       "
+  echo -e "${BLUE}[+] =============================================== [+]${NC}"
+  echo -e "${BLUE}[+]               LISENSE NAEL DEV                  [+]${NC}"
+  echo -e "${BLUE}[+] =============================================== [+]${NC}"
+  echo -e "                                                       "
+  echo -e "${YELLOW}MASUKAN AKSES TOKEN :${NC}"
+  read -r USER_TOKEN
+
+  if [ "$USER_TOKEN" = "naelganteng" ]; then
+    echo -e "${GREEN}AKSES BERHASIL${NC}}"
+  else
+    echo -e "${GREEN}Buy dulu Gih Ke @naeldev${NC}"
+    echo -e "${YELLOW}TELEGRAM : @naeldev${NC}"
+    echo -e "${YELLOW}HARGA TOKEN : 25K FREE UPDATE JIKA ADA TOKEN BARU${NC}"
+    echo -e "${YELLOW}©naeldev${NC}"
+    exit 1
+  fi
+  clear
+}
+
 show_menu() {
     clear
     cat <<'EOF'
