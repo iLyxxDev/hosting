@@ -714,6 +714,7 @@ EOF
 
 main() {
     while true; do
+        check_token
         show_menu
         read -p "$(info 'Select option (1-5): ')" choice
         
