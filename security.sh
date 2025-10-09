@@ -345,119 +345,125 @@ apply_manual_routes() {
     if [ -f "$ADMIN_FILE" ]; then
         process "Processing admin.php..."
         
-        # Method 1: Direct route protection with exact patterns
-        log "Applying direct route protection..."
+        # Backup original file
+        cp "$ADMIN_FILE" "$ADMIN_FILE.backup"
         
-        # Server routes protection
-        server_routes=(
-            "Route::get('/view/{server:id}/delete', [Admin\\Servers\\ServerViewController::class, 'delete'])->name('admin.servers.view.delete')"
-            "Route::post('/view/{server:id}/delete', [Admin\\ServersController::class, 'delete'])"
-            "Route::patch('/view/{server:id}/details', [Admin\\ServersController::class, 'setDetails'])"
+        # Method 1: Manual line-by-line processing
+        log "Processing routes line by line..."
+        
+        # Array of route patterns to protect
+        routes_to_protect=(
+            # Server routes
+            "Route::get('/view/{server:id}/delete'"
+            "Route::post('/view/{server:id}/delete'"
+            "Route::patch('/view/{server:id}/details'"
+            "Route::get('/view/{server:id}/details'"
+            
+            # User routes
+            "Route::patch('/view/{user:id}'"
+            "Route::delete('/view/{user:id}'"
+            
+            # Node routes
+            "Route::get('/view/{node:id}/settings'"
+            "Route::get('/view/{node:id}/configuration'"
+            "Route::post('/view/{node:id}/settings/token'"
+            "Route::patch('/view/{node:id}/settings'"
+            "Route::delete('/view/{node:id}/delete'"
         )
         
-        for route in "${server_routes[@]}"; do
-            # Escape special characters for sed
-            escaped_route=$(printf '%s\n' "$route" | sed 's/[[\.*^$/]/\\&/g')
-            
-            if grep -q "$route" "$ADMIN_FILE"; then
-                if ! grep -q "$route->middleware(\['custom.security'\])" "$ADMIN_FILE"; then
-                    # Replace the route with middleware version
-                    sed -i "s/$escaped_route);/$route->middleware(['custom.security']);/g" "$ADMIN_FILE"
-                    log "Applied middleware to server route: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                else
-                    warn "Middleware already applied to: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                fi
-            else
-                warn "Server route not found: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-            fi
-        done
-
-        # Method 2: User routes protection
-        user_routes=(
-            "Route::patch('/view/{user:id}', [Admin\\UserController::class, 'update'])"
-            "Route::delete('/view/{user:id}', [Admin\\UserController::class, 'delete'])"
-        )
+        protected_count=0
         
-        for route in "${user_routes[@]}"; do
-            escaped_route=$(printf '%s\n' "$route" | sed 's/[[\.*^$/]/\\&/g')
+        for route_pattern in "${routes_to_protect[@]}"; do
+            process "Searching for: $route_pattern"
             
-            if grep -q "$route" "$ADMIN_FILE"; then
-                if ! grep -q "$route->middleware(\['custom.security'\])" "$ADMIN_FILE"; then
-                    sed -i "s/$escaped_route);/$route->middleware(['custom.security']);/g" "$ADMIN_FILE"
-                    log "Applied middleware to user route: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                else
-                    warn "Middleware already applied to: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
+            # Find the exact line with this pattern
+            while IFS= read -r line; do
+                if [[ "$line" == *"$route_pattern"* ]] && [[ "$line" != *"->middleware"* ]]; then
+                    # Remove trailing spaces and check if line ends with );
+                    clean_line=$(echo "$line" | sed 's/[[:space:]]*$//')
+                    
+                    if [[ "$clean_line" == *");" ]]; then
+                        # Replace ); with )->middleware(['custom.security']);
+                        new_line="${clean_line%);}->middleware(['custom.security']);"
+                        
+                        # Escape special characters for sed
+                        escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
+                        escaped_new_line=$(printf '%s\n' "$new_line" | sed 's/[[\.*^$/]/\\&/g')
+                        
+                        # Replace the line in the file
+                        if sed -i "s|$escaped_line|$escaped_new_line|g" "$ADMIN_FILE"; then
+                            log "✓ Protected: $(echo "$line" | tr -s ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+                            ((protected_count++))
+                        else
+                            warn "Failed to protect: $(echo "$line" | tr -s ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+                        fi
+                    else
+                        warn "Line doesn't end with ); : $(echo "$line" | tr -s ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+                    fi
                 fi
-            else
-                warn "User route not found: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-            fi
+            done < "$ADMIN_FILE"
         done
-
-        # Method 3: Node routes protection
-        node_routes=(
-            "Route::get('/view/{node:id}/settings', [Admin\\Nodes\\NodeViewController::class, 'settings'])->name('admin.nodes.view.settings')"
-            "Route::get('/view/{node:id}/configuration', [Admin\\Nodes\\NodeViewController::class, 'configuration'])->name('admin.nodes.view.configuration')"
-            "Route::post('/view/{node:id}/settings/token', Admin\\NodeAutoDeployController::class)->name('admin.nodes.view.configuration.token')"
-            "Route::patch('/view/{node:id}/settings', [Admin\\NodesController::class, 'updateSettings'])"
-            "Route::delete('/view/{node:id}/delete', [Admin\\NodesController::class, 'delete'])->name('admin.nodes.view.delete')"
-        )
         
-        for route in "${node_routes[@]}"; do
-            escaped_route=$(printf '%s\n' "$route" | sed 's/[[\.*^$/]/\\&/g')
+        # Method 2: Verify changes were applied
+        log "Verifying middleware application..."
+        verify_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
+        
+        if [ $verify_count -gt 0 ]; then
+            log "Successfully applied middleware to $verify_count routes"
+        else
+            warn "No middleware applied! Using fallback method..."
             
-            if grep -q "$route" "$ADMIN_FILE"; then
-                if ! grep -q "$route->middleware(\['custom.security'\])" "$ADMIN_FILE"; then
-                    sed -i "s/$escaped_route);/$route->middleware(['custom.security']);/g" "$ADMIN_FILE"
-                    log "Applied middleware to node route: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                else
-                    warn "Middleware already applied to: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                fi
-            else
-                warn "Node route not found: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-            fi
-        done
-
-        # Method 4: Additional server detail routes
-        additional_server_routes=(
-            "Route::get('/view/{server:id}/details', [Admin\\Servers\\ServerViewController::class, 'details'])->name('admin.servers.view.details')"
-        )
-        
-        for route in "${additional_server_routes[@]}"; do
-            escaped_route=$(printf '%s\n' "$route" | sed 's/[[\.*^$/]/\\&/g')
+            # Fallback method - manual string replacement
+            process "Using fallback string replacement..."
             
-            if grep -q "$route" "$ADMIN_FILE"; then
-                if ! grep -q "$route->middleware(\['custom.security'\])" "$ADMIN_FILE"; then
-                    sed -i "s/$escaped_route);/$route->middleware(['custom.security']);/g" "$ADMIN_FILE"
-                    log "Applied middleware to server details route"
-                else
-                    warn "Middleware already applied to server details"
-                fi
-            else
-                warn "Server details route not found"
-            fi
-        done
-
-        # Method 5: Fallback - search for any remaining routes that might have been missed
-        log "Checking for any missed routes..."
-        
-        # Find all Route:: lines that don't have middleware yet
-        while IFS= read -r line; do
-            if [[ "$line" =~ Route::(get|post|patch|delete|put).*\{.*server:id.*\} ]] && \
-               [[ ! "$line" =~ "middleware" ]] && \
-               [[ "$line" =~ \)\; ]]; then
-                warn "Found unprotected server route: $(echo "$line" | tr -s ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            # Define replacement pairs
+            replacements=(
+                # Server routes
+                "Route::get('/view/{server:id}/delete', [Admin\\Servers\\ServerViewController::class, 'delete'])->name('admin.servers.view.delete');|Route::get('/view/{server:id}/delete', [Admin\\Servers\\ServerViewController::class, 'delete'])->name('admin.servers.view.delete')->middleware(['custom.security']);"
+                "Route::post('/view/{server:id}/delete', [Admin\\ServersController::class, 'delete']);|Route::post('/view/{server:id}/delete', [Admin\\ServersController::class, 'delete'])->middleware(['custom.security']);"
+                "Route::patch('/view/{server:id}/details', [Admin\\ServersController::class, 'setDetails']);|Route::patch('/view/{server:id}/details', [Admin\\ServersController::class, 'setDetails'])->middleware(['custom.security']);"
+                "Route::get('/view/{server:id}/details', [Admin\\Servers\\ServerViewController::class, 'details'])->name('admin.servers.view.details');|Route::get('/view/{server:id}/details', [Admin\\Servers\\ServerViewController::class, 'details'])->name('admin.servers.view.details')->middleware(['custom.security']);"
                 
-                # Try to add middleware
-                new_line=$(echo "$line" | sed "s/);/)->middleware(['custom.security']);/")
-                escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
-                escaped_new_line=$(printf '%s\n' "$new_line" | sed 's/[[\.*^$/]/\\&/g')
+                # User routes
+                "Route::patch('/view/{user:id}', [Admin\\UserController::class, 'update']);|Route::patch('/view/{user:id}', [Admin\\UserController::class, 'update'])->middleware(['custom.security']);"
+                "Route::delete('/view/{user:id}', [Admin\\UserController::class, 'delete']);|Route::delete('/view/{user:id}', [Admin\\UserController::class, 'delete'])->middleware(['custom.security']);"
                 
-                sed -i "s|$escaped_line|$escaped_new_line|g" "$ADMIN_FILE" 2>/dev/null && \
-                log "Added middleware to missed server route" || \
-                warn "Failed to add middleware to missed route"
+                # Node routes
+                "Route::get('/view/{node:id}/settings', [Admin\\Nodes\\NodeViewController::class, 'settings'])->name('admin.nodes.view.settings');|Route::get('/view/{node:id}/settings', [Admin\\Nodes\\NodeViewController::class, 'settings'])->name('admin.nodes.view.settings')->middleware(['custom.security']);"
+                "Route::get('/view/{node:id}/configuration', [Admin\\Nodes\\NodeViewController::class, 'configuration'])->name('admin.nodes.view.configuration');|Route::get('/view/{node:id}/configuration', [Admin\\Nodes\\NodeViewController::class, 'configuration'])->name('admin.nodes.view.configuration')->middleware(['custom.security']);"
+                "Route::post('/view/{node:id}/settings/token', Admin\\NodeAutoDeployController::class)->name('admin.nodes.view.configuration.token');|Route::post('/view/{node:id}/settings/token', Admin\\NodeAutoDeployController::class)->name('admin.nodes.view.configuration.token')->middleware(['custom.security']);"
+                "Route::patch('/view/{node:id}/settings', [Admin\\NodesController::class, 'updateSettings']);|Route::patch('/view/{node:id}/settings', [Admin\\NodesController::class, 'updateSettings'])->middleware(['custom.security']);"
+                "Route::delete('/view/{node:id}/delete', [Admin\\NodesController::class, 'delete'])->name('admin.nodes.view.delete');|Route::delete('/view/{node:id}/delete', [Admin\\NodesController::class, 'delete'])->name('admin.nodes.view.delete')->middleware(['custom.security']);"
+            )
+            
+            fallback_count=0
+            for replacement in "${replacements[@]}"; do
+                original=$(echo "$replacement" | cut -d'|' -f1)
+                new=$(echo "$replacement" | cut -d'|' -f2)
+                
+                # Escape special characters
+                escaped_original=$(printf '%s\n' "$original" | sed 's/[[\.*^$/]/\\&/g')
+                escaped_new=$(printf '%s\n' "$new" | sed 's/[[\.*^$/]/\\&/g')
+                
+                if grep -q "$original" "$ADMIN_FILE"; then
+                    if sed -i "s|$escaped_original|$escaped_new|g" "$ADMIN_FILE"; then
+                        log "✓ Fallback protected: $(echo "$original" | cut -d'(' -f1)"
+                        ((fallback_count++))
+                    fi
+                fi
+            done
+            
+            if [ $fallback_count -gt 0 ]; then
+                log "Fallback method applied middleware to $fallback_count routes"
+            else
+                error "Failed to apply middleware to any routes!"
             fi
-        done < <(grep -n "Route::.*{.*server:id.*}" "$ADMIN_FILE")
-
+        fi
+        
+        # Final verification
+        final_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
+        log "Final verification: $final_count routes protected with middleware"
+        
     else
         error "Admin routes file not found: $ADMIN_FILE"
     fi
