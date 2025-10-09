@@ -6,6 +6,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m'
 
 # Simple and smooth logging functions
@@ -30,25 +31,49 @@ process() {
     echo -e "${BLUE}→${NC} $1"
 }
 
-check_token() {
-  echo -e "                                                       "
-  echo -e "${BLUE}[+] =============================================== [+]${NC}"
-  echo -e "${BLUE}[+]               LISENSE NAEL DEV                  [+]${NC}"
-  echo -e "${BLUE}[+] =============================================== [+]${NC}"
-  echo -e "                                                       "
-  echo -e "${YELLOW}MASUKAN AKSES TOKEN :${NC}"
-  read -r USER_TOKEN
+license_info() {
+    echo -e "${PURPLE}♠${NC} $1"
+}
 
-  if [ "$USER_TOKEN" = "naelganteng" ]; then
-    echo -e "${GREEN}AKSES BERHASIL${NC}}"
-  else
-    echo -e "${GREEN}Buy dulu Gih Ke @naeldev${NC}"
-    echo -e "${YELLOW}TELEGRAM : @naeldev${NC}"
-    echo -e "${YELLOW}HARGA TOKEN : 25K FREE UPDATE JIKA ADA TOKEN BARU${NC}"
-    echo -e "${YELLOW}©naeldev${NC}"
-    exit 1
-  fi
-  clear
+# Loading bar function
+show_loading() {
+    local text=$1
+    local duration=2
+    local steps=20
+    local step_duration=$(echo "scale=3; $duration/$steps" | bc)
+    
+    printf "    ${text} ["
+    for ((i=0; i<steps; i++)); do
+        printf "▰"
+        sleep $step_duration
+    done
+    printf "] Done!\n"
+}
+
+# License verification
+verify_license() {
+    echo
+    license_info "License Verification"
+    echo "======================"
+    echo
+    read -p "Enter license key: " license_key
+    
+    if [ -z "$license_key" ]; then
+        error "License key cannot be empty!"
+    fi
+    
+    # Simple license verification (naeldev)
+    if [ "$license_key" != "naeldev" ]; then
+        error "Invalid license key! Access denied."
+    fi
+    
+    show_loading "Verifying license"
+    log "License verified successfully!"
+    echo
+    license_info "Licensed to: @naeldev"
+    license_info "Valid for: Custom Security Middleware"
+    license_info "Type: Single Domain License"
+    echo
 }
 
 show_menu() {
@@ -98,7 +123,30 @@ EOF
     echo "2. Change Credit Name"
     echo "3. Custom Error Message"
     echo "4. Clear Security (Uninstall)"
-    echo "5. Exit"
+    echo "5. License"
+    echo "6. Exit"
+    echo
+}
+
+show_license() {
+    echo
+    license_info "Software License Agreement"
+    echo "=============================="
+    echo
+    echo "Product: Custom Security Middleware for Pterodactyl"
+    echo "Version: 2.0"
+    echo "License: naeldev"
+    echo "Developer: @naeldev"
+    echo
+    echo "License Terms:"
+    echo "• Single domain usage"
+    echo "• Personal and commercial use allowed"
+    echo "• Modification permitted"
+    echo "• Redistribution not allowed"
+    echo "• No warranty provided"
+    echo
+    echo "This software is protected by license key: naeldev"
+    echo "Unauthorized use is prohibited."
     echo
 }
 
@@ -231,7 +279,7 @@ replace_credit_name() {
     
     log "Name changed from '@naeldev' to '@$new_name'"
     
-    process "Clearing cache..."
+    show_loading "Clearing cache"
     cd $PTERO_DIR
     sudo -u www-data php artisan config:clear
     sudo -u www-data php artisan route:clear
@@ -264,7 +312,7 @@ custom_error_message() {
     
     log "Error message updated to: '$custom_error'"
     
-    process "Clearing cache..."
+    show_loading "Clearing cache"
     cd $PTERO_DIR
     sudo -u www-data php artisan config:clear
     sudo -u www-data php artisan route:clear
@@ -331,6 +379,9 @@ install_middleware() {
         error "Please run as root: sudo bash <(curl -s https://raw.githubusercontent.com/iLyxxDev/hosting/main/security.sh)"
     fi
 
+    # License verification before installation
+    verify_license
+
     PTERO_DIR="/var/www/pterodactyl"
 
     if [ ! -d "$PTERO_DIR" ]; then
@@ -344,7 +395,7 @@ install_middleware() {
         error "Routes directory not found: $PTERO_DIR/routes"
     fi
 
-    process "Creating middleware file..."
+    show_loading "Creating middleware file"
     cat > $PTERO_DIR/app/Http/Middleware/CustomSecurityCheck.php << 'EOF'
 <?php
 
@@ -656,7 +707,7 @@ EOF
 
     apply_manual_routes
 
-    process "Clearing cache and optimizing..."
+    show_loading "Clearing cache and optimizing"
     cd $PTERO_DIR
     sudo -u www-data php artisan config:clear
     sudo -u www-data php artisan route:clear
@@ -714,9 +765,8 @@ EOF
 
 main() {
     while true; do
-        check_token
         show_menu
-        read -p "$(info 'Select option (1-5): ')" choice
+        read -p "$(info 'Select option (1-6): ')" choice
         
         case $choice in
             1)
@@ -733,12 +783,15 @@ main() {
                 clear_security
                 ;;
             5)
+                show_license
+                ;;
+            6)
                 echo
                 log "Thank you! Exiting program."
                 exit 0
                 ;;
             *)
-                error "Invalid option! Select 1, 2, 3, 4, or 5."
+                error "Invalid option! Select 1, 2, 3, 4, 5, or 6."
                 ;;
         esac
         
