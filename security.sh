@@ -35,6 +35,10 @@ license_info() {
     echo -e "${PURPLE}♠${NC} $1"
 }
 
+route_info() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
 # Loading bar function
 show_loading() {
     local text=$1
