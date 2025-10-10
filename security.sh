@@ -127,7 +127,8 @@ EOF
     echo "2. Applying Routes"
     echo "3. Custom Error Message"
     echo "4. Clear Security (Uninstall)"
-    echo "5. Exit"
+    echo "5. Refresh Cache VPS"
+    echo "6. Exit"
     echo
 }
 
@@ -151,6 +152,52 @@ show_license() {
     echo "This software is protected by license key: naeldev"
     echo "Unauthorized use is prohibited."
     echo
+}
+
+clear_pterodactyl_cache() {
+    echo
+    route_info "Clear Pterodactyl Cache"
+    echo "==========================="
+    echo
+    info "This will clear all Pterodactyl cache and optimize the application"
+    echo
+    read -p "Are you sure you want to clear Pterodactyl cache? (y/N): " confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        log "Cache clearing cancelled."
+        return
+    fi
+    
+    PTERO_DIR="/var/www/pterodactyl"
+    
+    if [ ! -d "$PTERO_DIR" ]; then
+        error "Pterodactyl directory not found: $PTERO_DIR"
+        return 1
+    fi
+    
+    process "Clearing Pterodactyl cache..."
+    
+    # Clear cache commands
+    cd "$PTERO_DIR"
+    
+    process "Clearing config cache..."
+    sudo -u www-data php artisan config:clear
+    
+    process "Clearing route cache..."
+    sudo -u www-data php artisan route:clear
+    
+    process "Clearing view cache..."
+    sudo -u www-data php artisan view:clear
+    
+    process "Clearing application cache..."
+    sudo -u www-data php artisan cache:clear
+    
+    process "Optimizing application..."
+    sudo -u www-data php artisan optimize
+    
+    log "✓ All cache cleared successfully!"
+    echo
+    log "Cache clearing completed!"
 }
 
 clear_security() {
@@ -1110,6 +1157,9 @@ main() {
                 clear_security
                 ;;
             5)
+                clear_pterodactyl_cache
+                ;;
+            6)
                 echo
                 log "Thank you! Exiting program."
                 exit 0
