@@ -533,12 +533,15 @@ add_routes_protection() {
         protected_count=0
         
         for route_pattern in "${routes_to_protect[@]}"; do
-            process "Processing: $(echo "$route_pattern" | cut -d'(' -f1)"
+            route_name=$(echo "$route_pattern" | cut -d'(' -f1)
+            process "Processing: $route_name"
             
             # Check if route exists in file
             if grep -qF "$route_pattern" "$ADMIN_FILE"; then
                 # Check if route already has middleware
-                if ! grep -F "$route_pattern" "$ADMIN_FILE" | grep -q "middleware"; then
+                if grep -F "$route_pattern" "$ADMIN_FILE" | grep -q "middleware"; then
+                    warn "⚠ Already protected: $route_name"
+                else
                     # Create the new route with middleware
                     new_route="${route_pattern%);}->middleware(['custom.security']);"
                     
@@ -548,16 +551,14 @@ add_routes_protection() {
                     
                     # Replace in file
                     if sed -i "s|$escaped_pattern|$escaped_new_route|g" "$ADMIN_FILE"; then
-                        log "✓ Protected: $(echo "$route_pattern" | cut -d'(' -f1)"
+                        log "✓ Protected: $route_name"
                         protected_count=$((protected_count + 1))
                     else
-                        warn "✗ Failed to protect: $(echo "$route_pattern" | cut -d'(' -f1)"
+                        warn "✗ Failed to protect: $route_name"
                     fi
-                else
-                    warn "⚠ Already protected: $(echo "$route_pattern" | cut -d'(' -f1)"
                 fi
             else
-                warn "⚠ Route not found: $(echo "$route_pattern" | cut -d'(' -f1)"
+                warn "⚠ Route not found: $route_name"
             fi
         done
         
@@ -575,7 +576,7 @@ add_routes_protection() {
         )
         
         for debug_route in "${debug_routes[@]}"; do
-            if grep -n "Route::.*$debug_route" "$ADMIN_FILE" > /dev/null; then
+            if grep -n "Route::.*$debug_route" "$ADMIN_FILE" >/dev/null 2>&1; then
                 log "Found: $debug_route"
             else
                 warn "Not found: $debug_route"
@@ -591,42 +592,50 @@ add_routes_protection() {
         
         # Define route patterns to match (without complete line)
         route_patterns_short=(
-            "Route::get.*view/{server:id}/delete.*"
-            "Route::post.*view/{server:id}/delete.*"
-            "Route::patch.*view/{server:id}/details.*"
-            "Route::get.*view/{server:id}/details.*"
-            "Route::patch.*view/{user:id}.*"
-            "Route::delete.*view/{user:id}.*"
-            "Route::get.*view/{node:id}/settings.*"
-            "Route::get.*view/{node:id}/configuration.*"
-            "Route::post.*view/{node:id}/settings/token.*"
-            "Route::patch.*view/{node:id}/settings.*"
-            "Route::delete.*view/{node:id}/delete.*"
+            "Route::get.*view/{server:id}/delete"
+            "Route::post.*view/{server:id}/delete"
+            "Route::patch.*view/{server:id}/details"
+            "Route::get.*view/{server:id}/details"
+            "Route::patch.*view/{user:id}"
+            "Route::delete.*view/{user:id}"
+            "Route::get.*view/{node:id}/settings"
+            "Route::get.*view/{node:id}/configuration"
+            "Route::post.*view/{node:id}/settings/token"
+            "Route::patch.*view/{node:id}/settings"
+            "Route::delete.*view/{node:id}/delete"
         )
         
         alt_protected=0
         for pattern in "${route_patterns_short[@]}"; do
             # Find lines matching the pattern that don't have middleware
             while IFS= read -r line; do
-                if echo "$line" | grep -q "$pattern" && ! echo "$line" | grep -q "middleware" && echo "$line" | grep -q ");$"; then
-                    # Remove trailing ); and add middleware
-                    new_line="${line%);}->middleware(['custom.security']);"
-                    
-                    # Escape for sed
-                    escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
-                    escaped_new_line=$(printf '%s\n' "$new_line" | sed 's/[[\.*^$/]/\\&/g')
-                    
-                    # Replace in temp file
-                    if sed -i "s|$escaped_line|$escaped_new_line|g" "$TEMP_FILE"; then
-                        log "✓ Alt protected: $(echo "$line" | cut -d'(' -f1 | tr -s ' ')"
-                        alt_protected=$((alt_protected + 1))
+                # Skip empty lines
+                [ -z "$line" ] && continue
+                
+                # Check if line matches pattern and doesn't have middleware
+                if echo "$line" | grep -q "$pattern" && ! echo "$line" | grep -q "middleware"; then
+                    # Check if line ends with );
+                    if echo "$line" | grep -q ");$"; then
+                        # Remove trailing ); and add middleware
+                        new_line="${line%);}->middleware(['custom.security']);"
+                        
+                        # Escape for sed
+                        escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
+                        escaped_new_line=$(printf '%s\n' "$new_line" | sed 's/[[\.*^$/]/\\&/g')
+                        
+                        # Replace in temp file
+                        if sed -i "s|$escaped_line|$escaped_new_line|g" "$TEMP_FILE"; then
+                            route_name_alt=$(echo "$line" | cut -d'(' -f1 | tr -s ' ')
+                            log "✓ Alt protected: $route_name_alt"
+                            alt_protected=$((alt_protected + 1))
+                        fi
                     fi
                 fi
-            done < <(grep -n "$pattern" "$ADMIN_FILE" | cut -d: -f2-)
+            done < <(grep -n "$pattern" "$ADMIN_FILE" 2>/dev/null | cut -d: -f2-)
         done
         
         # If alternative method found routes, copy temp file back
-        if [ "$alt_protected" -gt 0 ]; then
+        if [ -n "$alt_protected" ] && [ "$alt_protected" -gt 0 ]; then
             cp "$TEMP_FILE" "$ADMIN_FILE"
             log "Alternative method protected $alt_protected routes"
         fi
@@ -636,9 +645,9 @@ add_routes_protection() {
         
         # Method 4: Final verification
         process "Final verification..."
-        final_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
+        final_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" 2>/dev/null || echo "0")
         
-        if [ "$final_count" -gt 0 ]; then
+        if [ -n "$final_count" ] && [ "$final_count" -gt 0 ]; then
             log "Successfully protected $final_count routes with middleware"
         else
             error "Failed to protect any routes! Please check the routes manually."
@@ -657,12 +666,15 @@ add_routes_protection() {
         cp "$API_CLIENT_FILE" "$API_CLIENT_FILE.backup"
         
         # Protect /files route group
-        if grep -q "Route::group(\['prefix' => '/files'" "$API_CLIENT_FILE" && \
-           ! grep -q "Route::group(\['prefix' => '/files', 'middleware' => \['custom.security'\]" "$API_CLIENT_FILE"; then
-            sed -i "s|Route::group(\['prefix' => '/files'|Route::group(['prefix' => '/files', 'middleware' => ['custom.security']|g" "$API_CLIENT_FILE"
-            log "Protected /files route group in api-client.php"
+        if grep -q "Route::group(\['prefix' => '/files'" "$API_CLIENT_FILE"; then
+            if ! grep -q "Route::group(\['prefix' => '/files', 'middleware' => \['custom.security'\]" "$API_CLIENT_FILE"; then
+                sed -i "s|Route::group(\['prefix' => '/files'|Route::group(['prefix' => '/files', 'middleware' => ['custom.security']|g" "$API_CLIENT_FILE"
+                log "Protected /files route group in api-client.php"
+            else
+                warn "/files route group already protected"
+            fi
         else
-            warn "/files route group already protected or not found"
+            warn "/files route group not found"
         fi
         
     else
