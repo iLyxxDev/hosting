@@ -660,12 +660,13 @@ add_routes_protection() {
         warn "api-client.php not found: $API_CLIENT_FILE"
     fi
     
-    # 3. Clear cache
+    # 3. Clear cache - FIXED TYPO HERE
     process "Clearing cache..."
     cd $PTERO_DIR
     sudo -u www-data php artisan config:clear
-    sudo -u uwww-data php artisan route:clear
+    sudo -u www-data php artisan route:clear
     sudo -u www-data php artisan cache:clear
+    sudo -u www-data php artisan optimize
     
     log "Cache cleared"
     
