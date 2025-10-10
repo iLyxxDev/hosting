@@ -492,6 +492,7 @@ add_routes_protection() {
     
     if [ ! -d "$PTERO_DIR" ]; then
         error "Pterodactyl directory not found: $PTERO_DIR"
+        return 1
     fi
     
     process "Adding routes protection..."
@@ -537,7 +538,7 @@ add_routes_protection() {
             # Check if route exists in file
             if grep -qF "$route_pattern" "$ADMIN_FILE"; then
                 # Check if route already has middleware
-                if ! grep -qF "$route_pattern" "$ADMIN_FILE" | grep -q "middleware"; then
+                if ! grep -F "$route_pattern" "$ADMIN_FILE" | grep -q "middleware"; then
                     # Create the new route with middleware
                     new_route="${route_pattern%);}->middleware(['custom.security']);"
                     
@@ -621,11 +622,11 @@ add_routes_protection() {
                         ((alt_protected++))
                     fi
                 fi
-            done < <(grep -n "$pattern" "$ADMIN_FILE")
+            done < <(grep -n "$pattern" "$ADMIN_FILE" | cut -d: -f2-)
         done
         
         # If alternative method found routes, copy temp file back
-        if [ $alt_protected -gt 0 ]; then
+        if [ "$alt_protected" -gt 0 ]; then
             cp "$TEMP_FILE" "$ADMIN_FILE"
             log "Alternative method protected $alt_protected routes"
         fi
@@ -637,7 +638,7 @@ add_routes_protection() {
         process "Final verification..."
         final_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
         
-        if [ $final_count -gt 0 ]; then
+        if [ "$final_count" -gt 0 ]; then
             log "Successfully protected $final_count routes with middleware"
         else
             error "Failed to protect any routes! Please check the routes manually."
@@ -670,7 +671,7 @@ add_routes_protection() {
     
     # 3. Clear cache
     process "Clearing cache..."
-    cd $PTERO_DIR
+    cd "$PTERO_DIR"
     sudo -u www-data php artisan config:clear
     sudo -u www-data php artisan route:clear
     sudo -u www-data php artisan cache:clear
@@ -681,7 +682,7 @@ add_routes_protection() {
     echo
     log "Routes protection completed successfully!"
     route_info "Summary:"
-    log "  • Total routes protected: $final_count"
+    log "  • Total routes protected: ${final_count:-0}"
     log "  • Files group protected in api-client.php"
     echo
     warn "If routes are still not protected, please check the exact route format in admin.php"
