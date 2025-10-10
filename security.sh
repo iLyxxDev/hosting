@@ -120,11 +120,10 @@ EOF
     echo
     echo "Menu options:"
     echo "1. Install Security Middleware"
-    echo "2. Change Credit Name"
+    echo "2. Applying Routes"
     echo "3. Custom Error Message"
     echo "4. Clear Security (Uninstall)"
-    echo "5. License"
-    echo "6. Exit"
+    echo "5. Exit"
     echo
 }
 
@@ -1089,9 +1088,6 @@ main() {
                 clear_security
                 ;;
             5)
-                show_license
-                ;;
-            6)
                 echo
                 log "Thank you! Exiting program."
                 exit 0
