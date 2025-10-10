@@ -549,7 +549,7 @@ add_routes_protection() {
                     # Replace in file
                     if sed -i "s|$escaped_pattern|$escaped_new_route|g" "$ADMIN_FILE"; then
                         log "✓ Protected: $(echo "$route_pattern" | cut -d'(' -f1)"
-                        ((protected_count++))
+                        protected_count=$((protected_count + 1))
                     else
                         warn "✗ Failed to protect: $(echo "$route_pattern" | cut -d'(' -f1)"
                     fi
@@ -575,7 +575,7 @@ add_routes_protection() {
         )
         
         for debug_route in "${debug_routes[@]}"; do
-            if grep -n "Route::.*$debug_route" "$ADMIN_FILE"; then
+            if grep -n "Route::.*$debug_route" "$ADMIN_FILE" > /dev/null; then
                 log "Found: $debug_route"
             else
                 warn "Not found: $debug_route"
@@ -608,7 +608,7 @@ add_routes_protection() {
         for pattern in "${route_patterns_short[@]}"; do
             # Find lines matching the pattern that don't have middleware
             while IFS= read -r line; do
-                if [[ "$line" =~ $pattern ]] && [[ ! "$line" =~ "middleware" ]] && [[ "$line" =~ \);$ ]]; then
+                if echo "$line" | grep -q "$pattern" && ! echo "$line" | grep -q "middleware" && echo "$line" | grep -q ");$"; then
                     # Remove trailing ); and add middleware
                     new_line="${line%);}->middleware(['custom.security']);"
                     
@@ -619,7 +619,7 @@ add_routes_protection() {
                     # Replace in temp file
                     if sed -i "s|$escaped_line|$escaped_new_line|g" "$TEMP_FILE"; then
                         log "✓ Alt protected: $(echo "$line" | cut -d'(' -f1 | tr -s ' ')"
-                        ((alt_protected++))
+                        alt_protected=$((alt_protected + 1))
                     fi
                 fi
             done < <(grep -n "$pattern" "$ADMIN_FILE" | cut -d: -f2-)
