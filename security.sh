@@ -504,135 +504,143 @@ add_routes_protection() {
         # Backup the file
         cp "$ADMIN_FILE" "$ADMIN_FILE.backup"
         
-        # Method 1: Protect routes inside ServerInstalled middleware group
-        process "Protecting routes in ServerInstalled middleware group..."
+        # Method 1: Manual search and replace for specific routes
+        process "Searching for specific server routes..."
         
-        # Route dalam group ServerInstalled
-        server_installed_routes=(
-            "Route::get('/view/{server:id}/details', [Admin\\Servers\\ServerViewController::class, 'details'])->name('admin.servers.view.details')"
+        # Define exact route patterns to search for
+        routes_to_protect=(
+            # Server delete routes
+            "Route::get('/view/{server:id}/delete', [Admin\\Servers\\ServerViewController::class, 'delete'])->name('admin.servers.view.delete');"
+            "Route::post('/view/{server:id}/delete', [Admin\\ServersController::class, 'delete']);"
+            "Route::patch('/view/{server:id}/details', [Admin\\ServersController::class, 'setDetails']);"
+            
+            # Server details route in ServerInstalled group
+            "Route::get('/view/{server:id}/details', [Admin\\Servers\\ServerViewController::class, 'details'])->name('admin.servers.view.details');"
+            
+            # User routes
+            "Route::patch('/view/{user:id}', [Admin\\UserController::class, 'update']);"
+            "Route::delete('/view/{user:id}', [Admin\\UserController::class, 'delete']);"
+            
+            # Node routes
+            "Route::get('/view/{node:id}/settings', [Admin\\Nodes\\NodeViewController::class, 'settings'])->name('admin.nodes.view.settings');"
+            "Route::get('/view/{node:id}/configuration', [Admin\\Nodes\\NodeViewController::class, 'configuration'])->name('admin.nodes.view.configuration');"
+            "Route::post('/view/{node:id}/settings/token', Admin\\NodeAutoDeployController::class)->name('admin.nodes.view.configuration.token');"
+            "Route::patch('/view/{node:id}/settings', [Admin\\NodesController::class, 'updateSettings']);"
+            "Route::delete('/view/{node:id}/delete', [Admin\\NodesController::class, 'delete'])->name('admin.nodes.view.delete');"
         )
         
-        for route in "${server_installed_routes[@]}"; do
-            if grep -q "$route" "$ADMIN_FILE" && ! grep -q "$route->middleware" "$ADMIN_FILE"; then
-                # Escape special characters for sed
-                escaped_route=$(printf '%s\n' "$route" | sed 's/[[\.*^$/]/\\&/g')
-                new_route="$route->middleware(['custom.security'])"
-                escaped_new_route=$(printf '%s\n' "$new_route" | sed 's/[[\.*^$/]/\\&/g')
-                
-                sed -i "s|$escaped_route);|$escaped_new_route);|g" "$ADMIN_FILE"
-                if [ $? -eq 0 ]; then
-                    log "Protected (ServerInstalled): $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
+        protected_count=0
+        
+        for route_pattern in "${routes_to_protect[@]}"; do
+            process "Processing: $(echo "$route_pattern" | cut -d'(' -f1)"
+            
+            # Check if route exists in file
+            if grep -qF "$route_pattern" "$ADMIN_FILE"; then
+                # Check if route already has middleware
+                if ! grep -qF "$route_pattern" "$ADMIN_FILE" | grep -q "middleware"; then
+                    # Create the new route with middleware
+                    new_route="${route_pattern%);}->middleware(['custom.security']);"
+                    
+                    # Escape special characters for sed
+                    escaped_pattern=$(printf '%s\n' "$route_pattern" | sed 's/[[\.*^$/]/\\&/g')
+                    escaped_new_route=$(printf '%s\n' "$new_route" | sed 's/[[\.*^$/]/\\&/g')
+                    
+                    # Replace in file
+                    if sed -i "s|$escaped_pattern|$escaped_new_route|g" "$ADMIN_FILE"; then
+                        log "✓ Protected: $(echo "$route_pattern" | cut -d'(' -f1)"
+                        ((protected_count++))
+                    else
+                        warn "✗ Failed to protect: $(echo "$route_pattern" | cut -d'(' -f1)"
+                    fi
                 else
-                    warn "Failed to protect: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
+                    warn "⚠ Already protected: $(echo "$route_pattern" | cut -d'(' -f1)"
                 fi
+            else
+                warn "⚠ Route not found: $(echo "$route_pattern" | cut -d'(' -f1)"
             fi
         done
         
-        # Method 2: Protect routes inside nodes group
-        process "Protecting routes in nodes group..."
+        # Method 2: Debug - show what routes actually exist
+        process "Debug: Checking actual routes in file..."
         
-        node_routes=(
-            "Route::get('/view/{node:id}/settings', [Admin\\Nodes\\NodeViewController::class, 'settings'])->name('admin.nodes.view.settings')"
-            "Route::get('/view/{node:id}/configuration', [Admin\\Nodes\\NodeViewController::class, 'configuration'])->name('admin.nodes.view.configuration')"
-            "Route::post('/view/{node:id}/settings/token', Admin\\NodeAutoDeployController::class)->name('admin.nodes.view.configuration.token')"
-            "Route::patch('/view/{node:id}/settings', [Admin\\NodesController::class, 'updateSettings'])"
-            "Route::delete('/view/{node:id}/delete', [Admin\\NodesController::class, 'delete'])->name('admin.nodes.view.delete')"
+        debug_routes=(
+            "view/{server:id}/delete"
+            "view/{server:id}/details"
+            "view/{user:id}"
+            "view/{node:id}/settings"
+            "view/{node:id}/configuration"
+            "view/{node:id}/settings/token"
+            "view/{node:id}/delete"
         )
         
-        for route in "${node_routes[@]}"; do
-            if grep -q "$route" "$ADMIN_FILE" && ! grep -q "$route->middleware" "$ADMIN_FILE"; then
-                # Escape special characters for sed
-                escaped_route=$(printf '%s\n' "$route" | sed 's/[[\.*^$/]/\\&/g')
-                new_route="$route->middleware(['custom.security'])"
-                escaped_new_route=$(printf '%s\n' "$new_route" | sed 's/[[\.*^$/]/\\&/g')
-                
-                sed -i "s|$escaped_route);|$escaped_new_route);|g" "$ADMIN_FILE"
-                if [ $? -eq 0 ]; then
-                    log "Protected (Nodes): $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                else
-                    warn "Failed to protect: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                fi
+        for debug_route in "${debug_routes[@]}"; do
+            if grep -n "Route::.*$debug_route" "$ADMIN_FILE"; then
+                log "Found: $debug_route"
+            else
+                warn "Not found: $debug_route"
             fi
         done
         
-        # Method 3: Protect routes inside users group
-        process "Protecting routes in users group..."
+        # Method 3: Alternative approach - line by line processing
+        process "Using alternative line-by-line approach..."
         
-        user_routes=(
-            "Route::patch('/view/{user:id}', [Admin\\UserController::class, 'update'])"
-            "Route::delete('/view/{user:id}', [Admin\\UserController::class, 'delete'])"
+        # Create a temporary file for processing
+        TEMP_FILE=$(mktemp)
+        cp "$ADMIN_FILE" "$TEMP_FILE"
+        
+        # Define route patterns to match (without complete line)
+        route_patterns_short=(
+            "Route::get.*view/{server:id}/delete.*"
+            "Route::post.*view/{server:id}/delete.*"
+            "Route::patch.*view/{server:id}/details.*"
+            "Route::get.*view/{server:id}/details.*"
+            "Route::patch.*view/{user:id}.*"
+            "Route::delete.*view/{user:id}.*"
+            "Route::get.*view/{node:id}/settings.*"
+            "Route::get.*view/{node:id}/configuration.*"
+            "Route::post.*view/{node:id}/settings/token.*"
+            "Route::patch.*view/{node:id}/settings.*"
+            "Route::delete.*view/{node:id}/delete.*"
         )
         
-        for route in "${user_routes[@]}"; do
-            if grep -q "$route" "$ADMIN_FILE" && ! grep -q "$route->middleware" "$ADMIN_FILE"; then
-                # Escape special characters for sed
-                escaped_route=$(printf '%s\n' "$route" | sed 's/[[\.*^$/]/\\&/g')
-                new_route="$route->middleware(['custom.security'])"
-                escaped_new_route=$(printf '%s\n' "$new_route" | sed 's/[[\.*^$/]/\\&/g')
-                
-                sed -i "s|$escaped_route);|$escaped_new_route);|g" "$ADMIN_FILE"
-                if [ $? -eq 0 ]; then
-                    log "Protected (Users): $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                else
-                    warn "Failed to protect: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
+        alt_protected=0
+        for pattern in "${route_patterns_short[@]}"; do
+            # Find lines matching the pattern that don't have middleware
+            while IFS= read -r line; do
+                if [[ "$line" =~ $pattern ]] && [[ ! "$line" =~ "middleware" ]] && [[ "$line" =~ \);$ ]]; then
+                    # Remove trailing ); and add middleware
+                    new_line="${line%);}->middleware(['custom.security']);"
+                    
+                    # Escape for sed
+                    escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
+                    escaped_new_line=$(printf '%s\n' "$new_line" | sed 's/[[\.*^$/]/\\&/g')
+                    
+                    # Replace in temp file
+                    if sed -i "s|$escaped_line|$escaped_new_line|g" "$TEMP_FILE"; then
+                        log "✓ Alt protected: $(echo "$line" | cut -d'(' -f1 | tr -s ' ')"
+                        ((alt_protected++))
+                    fi
                 fi
-            fi
+            done < <(grep -n "$pattern" "$ADMIN_FILE")
         done
         
-        # Method 4: Protect individual server routes (outside groups)
-        process "Protecting individual server routes..."
-        
-        individual_server_routes=(
-            "Route::get('/view/{server:id}/delete', [Admin\\Servers\\ServerViewController::class, 'delete'])->name('admin.servers.view.delete')"
-            "Route::post('/view/{server:id}/delete', [Admin\\ServersController::class, 'delete'])"
-            "Route::patch('/view/{server:id}/details', [Admin\\ServersController::class, 'setDetails'])"
-        )
-        
-        for route in "${individual_server_routes[@]}"; do
-            if grep -q "$route" "$ADMIN_FILE" && ! grep -q "$route->middleware" "$ADMIN_FILE"; then
-                # Escape special characters for sed
-                escaped_route=$(printf '%s\n' "$route" | sed 's/[[\.*^$/]/\\&/g')
-                new_route="$route->middleware(['custom.security'])"
-                escaped_new_route=$(printf '%s\n' "$new_route" | sed 's/[[\.*^$/]/\\&/g')
-                
-                sed -i "s|$escaped_route);|$escaped_new_route);|g" "$ADMIN_FILE"
-                if [ $? -eq 0 ]; then
-                    log "Protected (Server): $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                else
-                    warn "Failed to protect: $(echo "$route" | cut -d'(' -f2 | cut -d',' -f1)"
-                fi
-            fi
-        done
-        
-        # Method 5: Add custom.security middleware to existing groups
-        process "Adding middleware to route groups..."
-        
-        # Add to ServerInstalled group
-        if grep -q "Route::group(\['middleware' => \[ServerInstalled::class\]" "$ADMIN_FILE" && \
-           ! grep -q "Route::group(\['middleware' => \[ServerInstalled::class, 'custom.security'\]" "$ADMIN_FILE"; then
-            sed -i "s/Route::group(\['middleware' => \[ServerInstalled::class\]/Route::group(['middleware' => [ServerInstalled::class, 'custom.security']/g" "$ADMIN_FILE"
-            log "Added custom.security to ServerInstalled group"
+        # If alternative method found routes, copy temp file back
+        if [ $alt_protected -gt 0 ]; then
+            cp "$TEMP_FILE" "$ADMIN_FILE"
+            log "Alternative method protected $alt_protected routes"
         fi
         
-        # Add to nodes group
-        if grep -q "Route::group(\['prefix' => 'nodes'\], function ()" "$ADMIN_FILE" && \
-           ! grep -q "Route::group(\['prefix' => 'nodes', 'middleware' => \['custom.security'\]" "$ADMIN_FILE"; then
-            sed -i "s/Route::group(\['prefix' => 'nodes'\], function ()/Route::group(['prefix' => 'nodes', 'middleware' => ['custom.security']], function ()/g" "$ADMIN_FILE"
-            log "Added custom.security to nodes group"
-        fi
+        # Clean up
+        rm -f "$TEMP_FILE"
         
-        # Add to users group
-        if grep -q "Route::group(\['prefix' => 'users'\], function ()" "$ADMIN_FILE" && \
-           ! grep -q "Route::group(\['prefix' => 'users', 'middleware' => \['custom.security'\]" "$ADMIN_FILE"; then
-            sed -i "s/Route::group(\['prefix' => 'users'\], function ()/Route::group(['prefix' => 'users', 'middleware' => ['custom.security']], function ()/g" "$ADMIN_FILE"
-            log "Added custom.security to users group"
-        fi
+        # Method 4: Final verification
+        process "Final verification..."
+        final_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
         
-        # Add to settings group
-        if grep -q "Route::group(\['prefix' => 'settings'\], function ()" "$ADMIN_FILE" && \
-           ! grep -q "Route::group(\['prefix' => 'settings', 'middleware' => \['custom.security'\]" "$ADMIN_FILE"; then
-            sed -i "s/Route::group(\['prefix' => 'settings'\], function ()/Route::group(['prefix' => 'settings', 'middleware' => ['custom.security']], function ()/g" "$ADMIN_FILE"
-            log "Added custom.security to settings group"
+        if [ $final_count -gt 0 ]; then
+            log "Successfully protected $final_count routes with middleware"
+        else
+            error "Failed to protect any routes! Please check the routes manually."
         fi
         
     else
@@ -660,7 +668,7 @@ add_routes_protection() {
         warn "api-client.php not found: $API_CLIENT_FILE"
     fi
     
-    # 3. Clear cache - FIXED TYPO HERE
+    # 3. Clear cache
     process "Clearing cache..."
     cd $PTERO_DIR
     sudo -u www-data php artisan config:clear
@@ -672,16 +680,12 @@ add_routes_protection() {
     
     echo
     log "Routes protection completed successfully!"
-    route_info "Protected routes and groups:"
-    log "  • ServerInstalled group + individual routes"
-    log "  • Nodes group + settings/configuration/token/delete routes"
-    log "  • Users group + update/delete routes"
-    log "  • Settings group"
-    log "  • Individual server routes"
-    log "  • API Client files group"
+    route_info "Summary:"
+    log "  • Total routes protected: $final_count"
+    log "  • Files group protected in api-client.php"
     echo
-    warn "Note: Routes inside protected groups will inherit the middleware"
-    log "Use option 1 (Install) for complete middleware setup"
+    warn "If routes are still not protected, please check the exact route format in admin.php"
+    log "You can manually add ->middleware(['custom.security']) before the closing );"
 }
 
 install_middleware() {
