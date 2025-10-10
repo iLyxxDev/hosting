@@ -128,7 +128,8 @@ EOF
     echo "3. Custom Error Message"
     echo "4. Clear Security (Uninstall)"
     echo "5. Refresh Cache VPS"
-    echo "6. Exit"
+    echo "6. Delete All Routes"
+    echo "7. Exit"
     echo
 }
 
@@ -152,6 +153,149 @@ show_license() {
     echo "This software is protected by license key: naeldev"
     echo "Unauthorized use is prohibited."
     echo
+}
+
+restore_default_routes() {
+    echo
+    route_info "Restore Default Routes"
+    echo "========================"
+    echo
+    info "This will restore admin.php and api-client.php routes to their default state"
+    echo
+    warn "This will remove all custom middleware protection from routes!"
+    echo
+    read -p "Are you sure you want to restore default routes? (y/N): " confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        log "Routes restoration cancelled."
+        return
+    fi
+    
+    PTERO_DIR="/var/www/pterodactyl"
+    
+    if [ ! -d "$PTERO_DIR" ]; then
+        error "Pterodactyl directory not found: $PTERO_DIR"
+        return 1
+    fi
+    
+    process "Restoring default routes..."
+    
+    # 1. Restore admin.php routes
+    ADMIN_FILE="$PTERO_DIR/routes/admin.php"
+    if [ -f "$ADMIN_FILE" ]; then
+        process "Restoring admin.php routes to default..."
+        
+        # Method 1: Remove custom.security middleware with various patterns
+        restored_count=0
+        
+        # Pattern 1: Standard middleware pattern
+        if grep -q "middleware.*custom.security" "$ADMIN_FILE"; then
+            sed -i "s/->middleware(\['custom.security'\])//g" "$ADMIN_FILE"
+            log "✓ Removed standard custom.security middleware"
+            ((restored_count++))
+        fi
+        
+        # Pattern 2: Middleware with different quotes
+        if grep -q "middleware.*custom.security" "$ADMIN_FILE"; then
+            sed -i "s/->middleware(\[\"custom.security\"\])//g" "$ADMIN_FILE"
+            sed -i "s/->middleware(\['custom.security'\])//g" "$ADMIN_FILE"
+            log "✓ Removed custom.security middleware with different quotes"
+            ((restored_count++))
+        fi
+        
+        # Pattern 3: Middleware with spaces
+        if grep -q "middleware.*custom.security" "$ADMIN_FILE"; then
+            sed -i "s/->middleware( \[ 'custom.security' \] )//g" "$ADMIN_FILE"
+            sed -i "s/->middleware( \['custom.security'\] )//g" "$ADMIN_FILE"
+            log "✓ Removed custom.security middleware with spaces"
+            ((restored_count++))
+        fi
+        
+        # Pattern 4: Multiple middleware arrays
+        if grep -q "middleware.*custom.security" "$ADMIN_FILE"; then
+            # Remove from single middleware array
+            sed -i "s/->middleware(\['custom.security'\])//g" "$ADMIN_FILE"
+            # Remove from multiple middleware array
+            sed -i "s/, 'custom.security'//g" "$ADMIN_FILE"
+            sed -i "s/'custom.security', //g" "$ADMIN_FILE"
+            log "✓ Removed custom.security from multiple middleware arrays"
+            ((restored_count++))
+        fi
+        
+        # Final cleanup: Remove empty middleware arrays
+        sed -i "s/->middleware(\[\])//g" "$ADMIN_FILE"
+        sed -i "s/->middleware(\[ \])//g" "$ADMIN_FILE"
+        
+        # Verify restoration
+        if grep -q "custom.security" "$ADMIN_FILE"; then
+            warn "⚠ Some custom.security middleware might still exist"
+            process "Manual cleanup might be required"
+        else
+            log "✓ All custom.security middleware removed from admin.php"
+        fi
+        
+    else
+        warn "admin.php not found: $ADMIN_FILE"
+    fi
+    
+    # 2. Restore api-client.php routes
+    API_CLIENT_FILE="$PTERO_DIR/routes/api-client.php"
+    if [ -f "$API_CLIENT_FILE" ]; then
+        process "Restoring api-client.php routes to default..."
+        
+        # Remove custom.security from /files route group with various patterns
+        api_restored=0
+        
+        # Pattern 1: Standard group pattern
+        if grep -q "prefix.*files.*middleware.*custom.security" "$API_CLIENT_FILE"; then
+            sed -i "s|Route::group(\['prefix' => '/files', 'middleware' => \['custom.security'\]|Route::group(['prefix' => '/files'|g" "$API_CLIENT_FILE"
+            sed -i "s|Route::group(['prefix' => '/files', 'middleware' => ['custom.security']|Route::group(['prefix' => '/files'|g" "$API_CLIENT_FILE"
+            log "✓ Restored /files route group to default"
+            ((api_restored++))
+        fi
+        
+        # Pattern 2: Remove individual middleware from routes
+        if grep -q "->middleware.*custom.security" "$API_CLIENT_FILE"; then
+            sed -i "s/->middleware(\['custom.security'\])//g" "$API_CLIENT_FILE"
+            sed -i "s/->middleware(\[\"custom.security\"\])//g" "$API_CLIENT_FILE"
+            log "✓ Removed individual middleware from api-client.php"
+            ((api_restored++))
+        fi
+        
+        # Cleanup empty middleware arrays
+        sed -i "s/->middleware(\[\])//g" "$API_CLIENT_FILE"
+        sed -i "s/->middleware(\[ \])//g" "$API_CLIENT_FILE"
+        
+        if [ "$api_restored" -eq 0 ]; then
+            warn "No custom middleware found in api-client.php"
+        else
+            log "✓ api-client.php routes restored"
+        fi
+        
+    else
+        warn "api-client.php not found: $API_CLIENT_FILE"
+    fi
+    
+    # 3. Clear cache
+    process "Clearing cache..."
+    cd "$PTERO_DIR"
+    sudo -u www-data php artisan config:clear
+    sudo -u www-data php artisan route:clear
+    sudo -u www-data php artisan view:clear
+    sudo -u www-data php artisan cache:clear
+    sudo -u www-data php artisan optimize
+    
+    log "Cache cleared"
+    
+    echo
+    log "Default routes restoration completed successfully!"
+    echo
+    info "Summary:"
+    log "  • admin.php: Removed all custom.security middleware patterns"
+    log "  • api-client.php: Restored route groups and removed middleware"
+    log "  • All cache cleared"
+    echo
+    warn "Note: If routes still have issues, manual verification may be needed"
 }
 
 clear_pterodactyl_cache() {
@@ -1160,6 +1304,9 @@ main() {
                 clear_pterodactyl_cache
                 ;;
             6)
+                restore_default_routes
+                ;;
+            7)
                 echo
                 log "Thank you! Exiting program."
                 exit 0
