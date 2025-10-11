@@ -643,6 +643,15 @@ add_custom_security_middleware() {
     else
         warn "Files route group not found or already modified"
     fi
+
+    # 2.3 Settings group in admin.php
+    if grep -q "Route::group(\['prefix' => '/settings'\], function () {" "$ADMIN_FILE"; then
+        sed -i "s|Route::group(['prefix' => '/settings'], function () {|Route::group(['prefix' => '/settings', 'middleware' => ['custom.security']], function () {|g" "$ADMIN_FILE"
+        log "✓ Added middleware to settings route group"
+        modified_count=$((modified_count + 1))
+    else
+        warn "Files route group not found or already modified"
+    fi
     
     # 3. Alternative method for routes that might have different formatting
     process "Checking for alternative route formats..."
