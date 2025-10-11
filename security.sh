@@ -396,10 +396,23 @@ clear_security() {
         fi
     fi
     
-    # admin.php - remove middleware from all routes
+    # admin.php - remove middleware from all route groups
     ADMIN_FILE="$PTERO_DIR/routes/admin.php"
     if [ -f "$ADMIN_FILE" ]; then
+        # Pattern 1: Remove from Route::group yang memiliki middleware array
+        sed -i "s/, 'middleware' => \['custom.security'\]//g" "$ADMIN_FILE"
+        
+        # Pattern 2: Remove dari Route::group yang hanya memiliki middleware custom.security saja
+        sed -i "s/'middleware' => \['custom.security'\], //g" "$ADMIN_FILE"
+        sed -i "s/'middleware' => \['custom.security'\]//g" "$ADMIN_FILE"
+        
+        # Pattern 3: Remove dari individual routes
         sed -i "s/->middleware(\['custom.security'\])//g" "$ADMIN_FILE"
+        
+        # Pattern 4: Clean up empty middleware arrays jika ada
+        sed -i "s/'middleware' => \[\],//g" "$ADMIN_FILE"
+        sed -i "s/, 'middleware' => \[\]//g" "$ADMIN_FILE"
+        
         log "Middleware removed from admin.php"
     fi
     
@@ -433,9 +446,9 @@ clear_security() {
         log "$PHP_SERVICE restarted"
     fi
     
-    if systemctl is-active --quiet pteroq-service; then
-        systemctl restart pteroq-service
-        log "pterodactyl-service restarted"
+    if systemctl is-active --quiet pteroq; then
+        systemctl restart pteroq
+        log "pteroq service restarted"
     fi
     
     if systemctl is-active --quiet nginx; then
