@@ -462,39 +462,202 @@ clear_security() {
     warn "System is now in NORMAL mode without security middleware protection"
 }
 
-replace_credit_name() {
+add_custom_security_middleware() {
     echo
-    info "Change Credit Name"
-    echo "=================="
+    route_info "Add Custom Security Middleware"
+    echo "=================================="
     echo
-    read -p "Enter new name to replace '@naeldev': " new_name
+    info "This will add 'custom.security' middleware to specific routes in admin.php"
+    echo
+    read -p "Are you sure you want to add custom security middleware? (y/N): " confirm
     
-    if [ -z "$new_name" ]; then
-        error "Name cannot be empty!"
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        log "Custom security middleware addition cancelled."
+        return
     fi
     
-    new_name=$(echo "$new_name" | sed 's/^@//')
+    PTERO_DIR="/var/www/pterodactyl"
     
-    echo
-    process "Replacing '@naeldev' with '@$new_name'..."
-    
-    if [ ! -f "$PTERO_DIR/app/Http/Middleware/CustomSecurityCheck.php" ]; then
-        error "Middleware not installed! Please install first."
+    if [ ! -d "$PTERO_DIR" ]; then
+        error "Pterodactyl directory not found: $PTERO_DIR"
+        return 1
     fi
     
-    sed -i "s/@naeldev/@$new_name/g" "$PTERO_DIR/app/Http/Middleware/CustomSecurityCheck.php"
+    ADMIN_FILE="$PTERO_DIR/routes/admin.php"
     
-    log "Name changed from '@naeldev' to '@$new_name'"
+    if [ ! -f "$ADMIN_FILE" ]; then
+        error "admin.php not found: $ADMIN_FILE"
+        return 1
+    fi
     
-    show_loading "Clearing cache"
-    cd $PTERO_DIR
+    process "Adding custom security middleware to admin.php routes..."
+    
+    # Backup the file
+    cp "$ADMIN_FILE" "$ADMIN_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    log "Backup created: $ADMIN_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Counter for modified routes
+    modified_count=0
+    
+    # 1. Users section - Route::patch and Route::delete
+    process "Processing users routes..."
+    
+    # Route::patch for users
+    if grep -q "Route::patch('/view/{user:id}', \[Admin\\UserController::class, 'update'\]);" "$ADMIN_FILE"; then
+        sed -i "s|Route::patch('/view/{user:id}', \[Admin\\UserController::class, 'update'\]);|Route::patch('/view/{user:id}', \[Admin\\UserController::class, 'update'\])->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to Route::patch for users"
+        ((modified_count++))
+    else
+        warn "Route::patch for users not found or already modified"
+    fi
+    
+    # Route::delete for users
+    if grep -q "Route::delete('/view/{user:id}', \[Admin\\UserController::class, 'delete'\]);" "$ADMIN_FILE"; then
+        sed -i "s|Route::delete('/view/{user:id}', \[Admin\\UserController::class, 'delete'\]);|Route::delete('/view/{user:id}', \[Admin\\UserController::class, 'delete'\])->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to Route::delete for users"
+        ((modified_count++))
+    else
+        warn "Route::delete for users not found or already modified"
+    fi
+    
+    # 2. Servers section - ServerInstalled group
+    process "Processing servers routes..."
+    
+    # Route::get for server details
+    if grep -q "Route::get('/view/{server:id}/details', \[Admin\\Servers\\ServerViewController::class, 'details'\])->name('admin.servers.view.details');" "$ADMIN_FILE"; then
+        sed -i "s|Route::get('/view/{server:id}/details', \[Admin\\Servers\\ServerViewController::class, 'details'\])->name('admin.servers.view.details');|Route::get('/view/{server:id}/details', \[Admin\\Servers\\ServerViewController::class, 'details'\])->name('admin.servers.view.details')->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to server details route"
+        ((modified_count++))
+    else
+        warn "Server details route not found or already modified"
+    fi
+    
+    # Route::get for server delete
+    if grep -q "Route::get('/view/{server:id}/delete', \[Admin\\Servers\\ServerViewController::class, 'delete'\])->name('admin.servers.view.delete');" "$ADMIN_FILE"; then
+        sed -i "s|Route::get('/view/{server:id}/delete', \[Admin\\Servers\\ServerViewController::class, 'delete'\])->name('admin.servers.view.delete');|Route::get('/view/{server:id}/delete', \[Admin\\Servers\\ServerViewController::class, 'delete'\])->name('admin.servers.view.delete')->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to server delete route"
+        ((modified_count++))
+    else
+        warn "Server delete route not found or already modified"
+    fi
+    
+    # Route::patch for server details update
+    if grep -q "Route::patch('/view/{server:id}/details', \[Admin\\ServersController::class, 'setDetails'\]);" "$ADMIN_FILE"; then
+        sed -i "s|Route::patch('/view/{server:id}/details', \[Admin\\ServersController::class, 'setDetails'\]);|Route::patch('/view/{server:id}/details', \[Admin\\ServersController::class, 'setDetails'\])->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to server details update route"
+        ((modified_count++))
+    else
+        warn "Server details update route not found or already modified"
+    fi
+    
+    # Route::delete for database delete
+    if grep -q "Route::delete('/view/{server:id}/database/{database:id}/delete', \[Admin\\ServersController::class, 'deleteDatabase'\])->name('admin.servers.view.database.delete');" "$ADMIN_FILE"; then
+        sed -i "s|Route::delete('/view/{server:id}/database/{database:id}/delete', \[Admin\\ServersController::class, 'deleteDatabase'\])->name('admin.servers.view.database.delete');|Route::delete('/view/{server:id}/database/{database:id}/delete', \[Admin\\ServersController::class, 'deleteDatabase'\])->name('admin.servers.view.database.delete')->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to database delete route"
+        ((modified_count++))
+    else
+        warn "Database delete route not found or already modified"
+    fi
+    
+    # 3. Nodes section
+    process "Processing nodes routes..."
+    
+    # Route::post for node settings token
+    if grep -q "Route::post('/view/{node:id}/settings/token', Admin\\NodeAutoDeployController::class)->name('admin.nodes.view.configuration.token');" "$ADMIN_FILE"; then
+        sed -i "s|Route::post('/view/{node:id}/settings/token', Admin\\NodeAutoDeployController::class)->name('admin.nodes.view.configuration.token');|Route::post('/view/{node:id}/settings/token', Admin\\NodeAutoDeployController::class)->name('admin.nodes.view.configuration.token')->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to node settings token route"
+        ((modified_count++))
+    else
+        warn "Node settings token route not found or already modified"
+    fi
+    
+    # Route::patch for node settings
+    if grep -q "Route::patch('/view/{node:id}/settings', \[Admin\\NodesController::class, 'updateSettings'\]);" "$ADMIN_FILE"; then
+        sed -i "s|Route::patch('/view/{node:id}/settings', \[Admin\\NodesController::class, 'updateSettings'\]);|Route::patch('/view/{node:id}/settings', \[Admin\\NodesController::class, 'updateSettings'\])->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to node settings update route"
+        ((modified_count++))
+    else
+        warn "Node settings update route not found or already modified"
+    fi
+    
+    # Route::delete for node delete
+    if grep -q "Route::delete('/view/{node:id}/delete', \[Admin\\NodesController::class, 'delete'\])->name('admin.nodes.view.delete');" "$ADMIN_FILE"; then
+        sed -i "s|Route::delete('/view/{node:id}/delete', \[Admin\\NodesController::class, 'delete'\])->name('admin.nodes.view.delete');|Route::delete('/view/{node:id}/delete', \[Admin\\NodesController::class, 'delete'\])->name('admin.nodes.view.delete')->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to node delete route"
+        ((modified_count++))
+    else
+        warn "Node delete route not found or already modified"
+    fi
+    
+    # 4. Alternative method for routes that might have different formatting
+    process "Checking for alternative route formats..."
+    
+    # Alternative patterns for the same routes
+    alternative_patterns=(
+        # Users
+        "Route::patch.*view/{user:id}.*Admin.*UserController.*update"
+        "Route::delete.*view/{user:id}.*Admin.*UserController.*delete"
+        
+        # Servers
+        "Route::get.*view/{server:id}/details.*Admin.*Servers.*ServerViewController.*details"
+        "Route::get.*view/{server:id}/delete.*Admin.*Servers.*ServerViewController.*delete"
+        "Route::patch.*view/{server:id}/details.*Admin.*ServersController.*setDetails"
+        "Route::delete.*view/{server:id}/database/{database:id}/delete.*Admin.*ServersController.*deleteDatabase"
+        
+        # Nodes
+        "Route::post.*view/{node:id}/settings/token.*Admin.*NodeAutoDeployController"
+        "Route::patch.*view/{node:id}/settings.*Admin.*NodesController.*updateSettings"
+        "Route::delete.*view/{node:id}/delete.*Admin.*NodesController.*delete"
+    )
+    
+    for pattern in "${alternative_patterns[@]}"; do
+        while IFS= read -r line; do
+            if [[ -n "$line" ]] && [[ ! "$line" =~ "middleware" ]] && [[ "$line" =~ \);$ ]]; then
+                # Remove trailing ); and add middleware
+                new_line="${line%);}->middleware(['custom.security']);"
+                
+                # Escape for sed
+                escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
+                escaped_new_line=$(printf '%s\n' "$new_line" | sed 's/[[\.*^$/]/\\&/g')
+                
+                # Replace in file
+                if sed -i "s|$escaped_line|$escaped_new_line|g" "$ADMIN_FILE"; then
+                    log "✓ Alt method: Added middleware to route"
+                    ((modified_count++))
+                fi
+            fi
+        done < <(grep "$pattern" "$ADMIN_FILE" 2>/dev/null)
+    done
+    
+    # 5. Verify changes
+    process "Verifying changes..."
+    final_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" 2>/dev/null || echo "0")
+    
+    # Clear cache
+    process "Clearing cache..."
+    cd "$PTERO_DIR"
     sudo -u www-data php artisan config:clear
     sudo -u www-data php artisan route:clear
+    sudo -u www-data php artisan view:clear
     sudo -u www-data php artisan cache:clear
+    sudo -u www-data php artisan optimize
+    
+    log "Cache cleared"
     
     echo
-    log "Credit name updated successfully!"
-    log "Current credit: @$new_name"
+    if [ "$final_count" -gt 0 ]; then
+        log "Custom security middleware addition completed successfully!"
+        route_info "Summary:"
+        log "  • Total routes modified: $modified_count"
+        log "  • Total routes with custom.security: $final_count"
+        log "  • Cache cleared and optimized"
+    else
+        error "Failed to add middleware to any routes! Please check the routes manually."
+    fi
+    
+    echo
+    warn "Note: If routes were not found, they may already have middleware or have different formatting"
+    log "Check $ADMIN_FILE.backup.* for original file backup"
 }
 
 custom_error_message() {
