@@ -590,26 +590,26 @@ add_custom_security_middleware() {
         warn "Node delete route not found or already modified"
     fi
     
-    # 4. Alternative method for routes that might have different formatting
+    # 4. Alternative method - fixed version
     process "Checking for alternative route formats..."
     
     # Alternative patterns for the same routes
     alternative_patterns=(
-        "Route::patch.*view/{user:id}.*Admin.*UserController.*update"
-        "Route::delete.*view/{user:id}.*Admin.*UserController.*delete"
-        "Route::get.*view/{server:id}/details.*Admin.*Servers.*ServerViewController.*details"
-        "Route::get.*view/{server:id}/delete.*Admin.*Servers.*ServerViewController.*delete"
-        "Route::patch.*view/{server:id}/details.*Admin.*ServersController.*setDetails"
-        "Route::delete.*view/{server:id}/database/{database:id}/delete.*Admin.*ServersController.*deleteDatabase"
-        "Route::post.*view/{node:id}/settings/token.*Admin.*NodeAutoDeployController"
-        "Route::patch.*view/{node:id}/settings.*Admin.*NodesController.*updateSettings"
-        "Route::delete.*view/{node:id}/delete.*Admin.*NodesController.*delete"
+        "Route::patch.*view/{user:id}.*Admin.*UserController.*update.*);"
+        "Route::delete.*view/{user:id}.*Admin.*UserController.*delete.*);"
+        "Route::get.*view/{server:id}/details.*Admin.*Servers.*ServerViewController.*details.*);"
+        "Route::get.*view/{server:id}/delete.*Admin.*Servers.*ServerViewController.*delete.*);"
+        "Route::patch.*view/{server:id}/details.*Admin.*ServersController.*setDetails.*);"
+        "Route::delete.*view/{server:id}/database/{database:id}/delete.*Admin.*ServersController.*deleteDatabase.*);"
+        "Route::post.*view/{node:id}/settings/token.*Admin.*NodeAutoDeployController.*);"
+        "Route::patch.*view/{node:id}/settings.*Admin.*NodesController.*updateSettings.*);"
+        "Route::delete.*view/{node:id}/delete.*Admin.*NodesController.*delete.*);"
     )
     
     for pattern in "${alternative_patterns[@]}"; do
         while IFS= read -r line; do
-            if [ -n "$line" ] && ! echo "$line" | grep -q "middleware" && echo "$line" | grep -q ");$"; then
-                # Remove trailing ); and add middleware
+            if [ -n "$line" ] && ! echo "$line" | grep -q "middleware"; then
+                # Properly add middleware before the closing );
                 new_line="${line%);}->middleware(['custom.security']);"
                 
                 # Escape for sed
@@ -618,7 +618,8 @@ add_custom_security_middleware() {
                 
                 # Replace in file
                 if sed -i "s|$escaped_line|$escaped_new_line|g" "$ADMIN_FILE"; then
-                    log "✓ Alt method: Added middleware to route"
+                    route_name=$(echo "$line" | awk '{print $2}')
+                    log "✓ Alt method: Added middleware to $route_name"
                     modified_count=$((modified_count + 1))
                 fi
             fi
