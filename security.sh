@@ -665,7 +665,7 @@ add_custom_security_middleware() {
         while IFS= read -r line; do
             if [ -n "$line" ] && ! echo "$line" | grep -q "middleware"; then
                 # Properly add middleware before the closing );
-                new_line="${line%);}->middleware(['custom.security']);"
+                new_line="${line%);})->middleware(['custom.security']);"
                 
                 # Escape for sed
                 escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
@@ -683,7 +683,7 @@ add_custom_security_middleware() {
     
     # 4. Verify changes
     process "Verifying changes..."
-    admin_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" 2>/dev/null || echo "0")
+    admin_count=$(grep -c ")->middleware(\['custom.security'\])" "$ADMIN_FILE" 2>/dev/null || echo "0")
     api_count=$(grep -c "'custom.security'" "$API_CLIENT_FILE" 2>/dev/null || echo "0")
     total_count=$((admin_count + api_count))
     
