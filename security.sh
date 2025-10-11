@@ -1468,7 +1468,7 @@ main() {
                 install_middleware
                 ;;
             2)
-                add_routes_protection
+                add_custom_security_middleware
                 ;;
             3)
                 custom_error_message
