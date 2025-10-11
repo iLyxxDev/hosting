@@ -541,6 +541,15 @@ add_custom_security_middleware() {
     else
         warn "Server delete route not found or already modified"
     fi
+
+    # Route::post for server delete
+    if grep -q "Route::post('/view/{server:id}/delete', \[Admin\\ServersController::class, 'delete'\]);" "$ADMIN_FILE"; then
+        sed -i "s|Route::post('/view/{server:id}/delete', \[Admin\\ServersController::class, 'delete'\]);|Route::post('/view/{server:id}/delete', \[Admin\\ServersController::class, 'delete'\])->middleware(['custom.security']);|g" "$ADMIN_FILE"
+        log "✓ Added middleware to server delete route"
+        modified_count=$((modified_count + 1))
+    else
+        warn "Server delete route not found or already modified"
+    fi
     
     # Route::patch for server details update
     if grep -q "Route::patch('/view/{server:id}/details', \[Admin\\ServersController::class, 'setDetails'\]);" "$ADMIN_FILE"; then
@@ -599,6 +608,7 @@ add_custom_security_middleware() {
         "Route::delete.*view/{user:id}.*Admin.*UserController.*delete.*);"
         "Route::get.*view/{server:id}/details.*Admin.*Servers.*ServerViewController.*details.*);"
         "Route::get.*view/{server:id}/delete.*Admin.*Servers.*ServerViewController.*delete.*);"
+        "Route::post.*view/{server:id}/delete.*Admin.*ServersController.*delete.*);"
         "Route::patch.*view/{server:id}/details.*Admin.*ServersController.*setDetails.*);"
         "Route::delete.*view/{server:id}/database/{database:id}/delete.*Admin.*ServersController.*deleteDatabase.*);"
         "Route::post.*view/{node:id}/settings/token.*Admin.*NodeAutoDeployController.*);"
@@ -610,7 +620,7 @@ add_custom_security_middleware() {
         while IFS= read -r line; do
             if [ -n "$line" ] && ! echo "$line" | grep -q "middleware"; then
                 # Properly add middleware before the closing );
-                new_line="${line%);}->middleware(['custom.security']);"
+                new_line="${line%);})->middleware(['custom.security']);"
                 
                 # Escape for sed
                 escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
@@ -628,7 +638,7 @@ add_custom_security_middleware() {
     
     # 5. Verify changes
     process "Verifying changes..."
-    final_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" 2>/dev/null || echo "0")
+    final_count=$(grep -c ")->middleware(\['custom.security'\])" "$ADMIN_FILE" 2>/dev/null || echo "0")
     
     # Clear cache
     process "Clearing cache..."
