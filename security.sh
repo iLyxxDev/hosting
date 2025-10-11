@@ -643,15 +643,6 @@ add_custom_security_middleware() {
     else
         warn "Files route group not found or already modified"
     fi
-
-    # 2.3 Settings group in admin.php
-    if grep -q "Route::group(\['prefix' => '/settings'\], function () {" "$ADMIN_FILE"; then
-        sed -i "s|Route::group(['prefix' => '/settings'], function () {|Route::group(['prefix' => '/settings', 'middleware' => ['custom.security']], function () {|g" "$ADMIN_FILE"
-        log "✓ Added middleware to settings route group"
-        modified_count=$((modified_count + 1))
-    else
-        warn "Files route group not found or already modified"
-    fi
     
     # 3. Alternative method for routes that might have different formatting
     process "Checking for alternative route formats..."
@@ -683,7 +674,7 @@ add_custom_security_middleware() {
                 # Replace in file
                 if sed -i "s|$escaped_line|$escaped_new_line|g" "$ADMIN_FILE"; then
                     route_name=$(echo "$line" | awk '{print $2}')
-                    log "✓ Alt method: Added middleware to $route_name"
+                    log "✓ Added middleware to $route_name"
                     modified_count=$((modified_count + 1))
                 fi
             fi
@@ -781,6 +772,17 @@ apply_manual_routes() {
     ADMIN_FILE="$PTERO_DIR/routes/admin.php"
     if [ -f "$ADMIN_FILE" ]; then
         process "Processing admin.php..."
+
+        if grep -q "Route::group(\['prefix' => '/settings'" "$ADMIN_FILE"; then
+            if ! grep -q "Route::group(\['prefix' => '/settings', 'middleware' => \['custom.security'\]" "$ADMIN_FILE"; then
+                sed -i "s/Route::group(\['prefix' => '\/settings'/Route::group(['prefix' => '\/settings', 'middleware' => ['custom.security']/g" "$ADMIN_FILE"
+                log "Applied to /settings group in admin.php"
+            else
+                warn "Already applied to /settings group"
+            fi
+        else
+            warn "/settings group not found in admin.php"
+        fi
         
         # Backup original file
         cp "$ADMIN_FILE" "$ADMIN_FILE.backup"
