@@ -467,7 +467,7 @@ add_custom_security_middleware() {
     route_info "Add Custom Security Middleware"
     echo "=================================="
     echo
-    info "This will add 'custom.security' middleware to specific routes in admin.php"
+    info "This will add 'custom.security' middleware to specific routes in admin.php and api-client.php"
     echo
     read -p "Are you sure you want to add custom security middleware? (y/N): " confirm
     
@@ -484,23 +484,44 @@ add_custom_security_middleware() {
     fi
     
     ADMIN_FILE="$PTERO_DIR/routes/admin.php"
+    API_CLIENT_FILE="$PTERO_DIR/routes/api-client.php"
     
     if [ ! -f "$ADMIN_FILE" ]; then
         error "admin.php not found: $ADMIN_FILE"
         return 1
     fi
     
-    process "Adding custom security middleware to admin.php routes..."
+    if [ ! -f "$API_CLIENT_FILE" ]; then
+        error "api-client.php not found: $API_CLIENT_FILE"
+        return 1
+    fi
     
-    # Backup the file
-    backup_file="$ADMIN_FILE.backup.$(date +%Y%m%d_%H%M%S)"
-    cp "$ADMIN_FILE" "$backup_file"
-    log "Backup created: $backup_file"
+    process "Adding custom security middleware to routes..."
+    
+    # Backup the files
+    admin_backup="$ADMIN_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    api_backup="$API_CLIENT_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$ADMIN_FILE" "$admin_backup"
+    cp "$API_CLIENT_FILE" "$api_backup"
+    log "Backup created: $admin_backup"
+    log "Backup created: $api_backup"
     
     # Counter for modified routes
     modified_count=0
     
-    # 1. Users section - Route::patch and Route::delete
+    # 1. Admin.php routes
+    process "Processing admin.php routes..."
+    
+    # 1.1 Settings group in admin.php
+    if grep -q "Route::group(\['prefix' => 'settings'\], function () {" "$ADMIN_FILE"; then
+        sed -i "s|Route::group(['prefix' => 'settings'], function () {|Route::group(['prefix' => 'settings', 'middleware' => ['custom.security']], function () {|g" "$ADMIN_FILE"
+        log "✓ Added middleware to settings route group"
+        modified_count=$((modified_count + 1))
+    else
+        warn "Settings route group not found or already modified"
+    fi
+    
+    # 1.2 Users section - Route::patch and Route::delete
     process "Processing users routes..."
     
     # Route::patch for users
@@ -521,7 +542,7 @@ add_custom_security_middleware() {
         warn "Route::delete for users not found or already modified"
     fi
     
-    # 2. Servers section - ServerInstalled group
+    # 1.3 Servers section - ServerInstalled group
     process "Processing servers routes..."
     
     # Route::get for server details
@@ -569,7 +590,7 @@ add_custom_security_middleware() {
         warn "Database delete route not found or already modified"
     fi
     
-    # 3. Nodes section
+    # 1.4 Nodes section
     process "Processing nodes routes..."
     
     # Route::post for node settings token
@@ -599,7 +620,31 @@ add_custom_security_middleware() {
         warn "Node delete route not found or already modified"
     fi
     
-    # 4. Alternative method - fixed version
+    # 2. Api-client.php routes
+    process "Processing api-client.php routes..."
+    
+    # 2.1 Server group middleware in api-client.php
+    if grep -q "Route::group(\[" "$API_CLIENT_FILE" && grep -q "'prefix' => '/servers/{server}'" "$API_CLIENT_FILE" && grep -q "ServerSubject::class" "$API_CLIENT_FILE"; then
+        # Find the line with middleware array and add custom.security
+        sed -i "/'middleware' => \[/,/\]/{
+            /ResourceBelongsToServer::class,/a\        'custom.security',
+        }" "$API_CLIENT_FILE"
+        log "✓ Added custom.security to server group middleware"
+        modified_count=$((modified_count + 1))
+    else
+        warn "Server group route not found or already modified"
+    fi
+    
+    # 2.2 Files group in api-client.php
+    if grep -q "Route::group(\['prefix' => '/files'\], function () {" "$API_CLIENT_FILE"; then
+        sed -i "s|Route::group(['prefix' => '/files'], function () {|Route::group(['prefix' => '/files', 'middleware' => ['custom.security']], function () {|g" "$API_CLIENT_FILE"
+        log "✓ Added middleware to files route group"
+        modified_count=$((modified_count + 1))
+    else
+        warn "Files route group not found or already modified"
+    fi
+    
+    # 3. Alternative method for routes that might have different formatting
     process "Checking for alternative route formats..."
     
     # Alternative patterns for the same routes
@@ -620,7 +665,7 @@ add_custom_security_middleware() {
         while IFS= read -r line; do
             if [ -n "$line" ] && ! echo "$line" | grep -q "middleware"; then
                 # Properly add middleware before the closing );
-                new_line="${line%);})->middleware(['custom.security']);"
+                new_line="${line%);}->middleware(['custom.security']);"
                 
                 # Escape for sed
                 escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
@@ -636,9 +681,11 @@ add_custom_security_middleware() {
         done < <(grep "$pattern" "$ADMIN_FILE" 2>/dev/null)
     done
     
-    # 5. Verify changes
+    # 4. Verify changes
     process "Verifying changes..."
-    final_count=$(grep -c ")->middleware(\['custom.security'\])" "$ADMIN_FILE" 2>/dev/null || echo "0")
+    admin_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" 2>/dev/null || echo "0")
+    api_count=$(grep -c "'custom.security'" "$API_CLIENT_FILE" 2>/dev/null || echo "0")
+    total_count=$((admin_count + api_count))
     
     # Clear cache
     process "Clearing cache..."
@@ -652,11 +699,13 @@ add_custom_security_middleware() {
     log "Cache cleared"
     
     echo
-    if [ "$final_count" -gt 0 ]; then
+    if [ "$total_count" -gt 0 ]; then
         log "Custom security middleware addition completed successfully!"
         route_info "Summary:"
         log "  • Total routes modified: $modified_count"
-        log "  • Total routes with custom.security: $final_count"
+        log "  • admin.php routes with custom.security: $admin_count"
+        log "  • api-client.php routes with custom.security: $api_count"
+        log "  • Total routes protected: $total_count"
         log "  • Cache cleared and optimized"
     else
         error "Failed to add middleware to any routes! Please check the routes manually."
@@ -664,7 +713,9 @@ add_custom_security_middleware() {
     
     echo
     warn "Note: If routes were not found, they may already have middleware or have different formatting"
-    log "Check $backup_file for original file backup"
+    log "Check backup files for original files:"
+    log "  - $admin_backup"
+    log "  - $api_backup"
 }
 
 custom_error_message() {
