@@ -817,13 +817,13 @@ apply_manual_routes() {
             
             # Find the exact line with this pattern
             while IFS= read -r line; do
-                if [[ "$line" == *"$route_pattern"* ]] && [[ "$line" != *"->middleware"* ]]; then
+                if [[ "$line" == *"$route_pattern"* ]] && [[ "$line" != *")->middleware"* ]]; then
                     # Remove trailing spaces and check if line ends with );
                     clean_line=$(echo "$line" | sed 's/[[:space:]]*$//')
                     
                     if [[ "$clean_line" == *");" ]]; then
                         # Replace ); with )->middleware(['custom.security']);
-                        new_line="${clean_line%);}->middleware(['custom.security']);"
+                        new_line="${clean_line%);})->middleware(['custom.security']);"
                         
                         # Escape special characters for sed
                         escaped_line=$(printf '%s\n' "$line" | sed 's/[[\.*^$/]/\\&/g')
@@ -845,7 +845,7 @@ apply_manual_routes() {
         
         # Method 2: Verify changes were applied
         log "Verifying middleware application..."
-        verify_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
+        verify_count=$(grep -c ")->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
         
         if [ $verify_count -gt 0 ]; then
             log "Successfully applied middleware to $verify_count routes"
@@ -900,7 +900,7 @@ apply_manual_routes() {
         fi
         
         # Final verification
-        final_count=$(grep -c "->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
+        final_count=$(grep -c ")->middleware(\['custom.security'\])" "$ADMIN_FILE" || true)
         log "Final verification: $final_count routes protected with middleware"
         
     else
