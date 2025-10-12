@@ -117,19 +117,19 @@ EOF
 
     echo
     echo "=========================================="
-    echo "               Simple Option            "
+    echo "               Simple Options           "
     echo "    Custom Security Middleware Installer"
     echo "                 @naeldev               "
     echo "=========================================="
     echo
-    echo "Menu options:"
-    echo "1. Install Security Middleware"
-    echo "2. Applying Routes"
-    echo "3. Custom Error Message"
-    echo "4. Clear Security (Uninstall)"
-    echo "5. Refresh Cache VPS"
-    echo "6. Delete All Routes"
-    echo "7. Exit"
+    echo "Choose Menu options:"
+    echo "[1] Install Security Middleware"
+    echo "[2] Applying Routes"
+    echo "[3] Custom Error Message"
+    echo "[4] Clear Security (Uninstall)"
+    echo "[5] Refresh Cache VPS"
+    echo "[6] Delete All Routes"
+    echo "[7] Exit"
     echo
 }
 
@@ -1529,7 +1529,7 @@ EOF
 main() {
     while true; do
         show_menu
-        read -p "$(info 'Select option (1-6): ')" choice
+        read -p "$(info 'Select option (1-7): ')" choice
         
         case $choice in
             1)
